@@ -12,6 +12,8 @@ RED=$ESC"31m"
 GREEN=$ESC"32m"
 BLUE=$ESC"34m"
 
+current_configs=( .bashrc .tmux.conf .tmux.conf.local .vim .vimrc )
+
 # check if jq is installed
 which jq > /dev/null 2>&1
 if [[ $? -ne 0 ]]; then
@@ -22,33 +24,26 @@ if [[ $? -ne 0 ]]; then
     exit 0
 fi 
 
-if [[ -z ${1} ]]; then
-    echo -e "${RED}Missing argument CTF name.${RESET}"
-    exit 0
-fi
+ctf_name="pwnbox"
 
-ctf_name=${1}
-
-# Create a volume for this container 
-docker create -v /root/work --name ${ctf_name}_data superkojiman/pwnbox
-
-# Get the volume name for the delete script
-vol_name=`docker inspect ${ctf_name}_data | jq '.[].Mounts[].Name' | sed 's/\"//g'`
-
-# Create docker container and run in the background
-# Add this if you need to modify anything in /proc:  --privileged 
 docker run -it \
     -h ${ctf_name} \
     -d \
     --security-opt seccomp:unconfined \
     --name ${ctf_name} \
-    --volumes-from ${ctf_name}_data \
+    -v ${PWD}/data:/root/work \
     --privileged \
     superkojiman/pwnbox
 
 # Tar config files in rc and extract it into the container
 if [[ -d rc ]]; then
     cd rc
+
+    # Copy current configs to pwnbox
+    for i in "${current_configs[@]}"; do
+        sudo cp -r $HOME/$i .
+    done
+   
     if [[ -f rc.tar ]]; then
         rm -f rc.tar
     fi
@@ -67,11 +62,9 @@ fi
 # Create stop/rm script for container
 cat << EOF > ${ctf_name}-stop.sh
 #!/bin/bash
-echo "Removing ${ctf_name} containers and volumes"
+echo "Removing ${ctf_name} containers"
 docker stop ${ctf_name}
 docker rm ${ctf_name}
-docker rm ${ctf_name}_data
-docker volume rm ${vol_name}
 rm -f ${ctf_name}-attach.sh
 rm -f ${ctf_name}-stop.sh
 EOF
